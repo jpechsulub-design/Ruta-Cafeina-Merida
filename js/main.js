@@ -3,7 +3,9 @@
       Para agregar una sección nueva basta con darle id y data-menu.
    2. Abre y cierra el menú en teléfono.
    3. Botón para copiar el teléfono.
-   4. Año actual en el pie. */
+   4. Año actual en el pie.
+   5. Pantallas independientes por sección.
+   6. Contador de visitas. */
 (function () {
   var lista = document.getElementById('menu-lista');
   var secciones = document.querySelectorAll('section[data-menu]');
@@ -18,6 +20,39 @@
       lista.appendChild(li);
     });
   }
+
+
+  /* Pantallas: cada opción del menú abre una pantalla nueva y oculta las demás.
+     Usa el hash de la dirección (#cafe, #origen…), así funcionan los botones de
+     "atrás" y "adelante" y se pueden compartir enlaces a una sola pantalla.
+     Para agregar una pantalla basta con una <section> dentro de <main>. */
+  var pantallas = Array.prototype.slice.call(document.querySelectorAll('main > section'));
+  var actual = null;
+  function resolverPantalla() {
+    var h = decodeURIComponent((location.hash || '').replace(/^#/, ''));
+    if (h) {
+      for (var i = 0; i < pantallas.length; i++) if (pantallas[i].id === h) return pantallas[i];
+      var base = h.split(/[\/?]/)[0];
+      for (var j = 0; j < pantallas.length; j++) if (pantallas[j].id === base) return pantallas[j];
+    }
+    return pantallas[0] || null;
+  }
+  function mostrarPantalla(primera) {
+    var s = resolverPantalla();
+    if (!s || s === actual) return;
+    pantallas.forEach(function (p) { p.hidden = p !== s; });
+    actual = s;
+    if (lista) Array.prototype.forEach.call(lista.querySelectorAll('a'), function (a) {
+      if (a.getAttribute('href') === '#' + s.id) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
+    if (!primera) {
+      try { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); } catch (e) { window.scrollTo(0, 0); }
+      s.setAttribute('tabindex', '-1');
+      try { s.focus({ preventScroll: true }); } catch (e) { /* sin foco */ }
+    }
+  }
+  window.addEventListener('hashchange', function () { mostrarPantalla(false); });
+  mostrarPantalla(true);
 
   var boton = document.getElementById('boton-menu');
   var menu = document.getElementById('menu');
@@ -51,6 +86,30 @@
       }
     });
   }
+
+
+  /* Contador de visitas. Usa el servicio gratuito CounterAPI (api.counterapi.dev), sin cuentas ni cookies.
+     Cuenta una visita por pestaña abierta. Si el servicio no responde, el contador se oculta y el sitio sigue igual. */
+  (function () {
+    var caja = document.getElementById('contador-visitas'), num = document.getElementById('contador-num');
+    if (!caja || !num || !window.fetch) return;
+    var ESPACIO = 'ruta-cafeina-merida', NOMBRE = 'visitas-sitio';
+    var contada = false;
+    try { contada = sessionStorage.getItem('rc_visita_contada') === '1'; } catch (e) { contada = false; }
+    var ctl = window.AbortController ? new AbortController() : null;
+    var corte = setTimeout(function () { if (ctl) ctl.abort(); }, 6000);
+    fetch('https://api.counterapi.dev/v1/' + ESPACIO + '/' + NOMBRE + (contada ? '' : '/up'), { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); })
+      .then(function (j) {
+        clearTimeout(corte);
+        var n = Number(j && (j.count != null ? j.count : j.value));
+        if (!isFinite(n)) throw new Error('dato');
+        num.textContent = n.toLocaleString('es-MX');
+        caja.hidden = false;
+        try { sessionStorage.setItem('rc_visita_contada', '1'); } catch (e) { /* sin almacenamiento */ }
+      })
+      .catch(function () { clearTimeout(corte); caja.hidden = true; });
+  })();
 
   var anio = document.getElementById('anio');
   if (anio) anio.textContent = new Date().getFullYear();
