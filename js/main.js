@@ -88,27 +88,47 @@
   }
 
 
-  /* Contador de visitas. Usa el servicio gratuito CounterAPI (api.counterapi.dev), sin cuentas ni cookies.
+  /* Contador de visitas. Usa el servicio gratuito Abacus (abacus.jasoncameron.dev), sin cuentas ni cookies.
      Cuenta una visita por pestaña abierta. Si el servicio no responde, el contador se oculta y el sitio sigue igual. */
   (function () {
     var caja = document.getElementById('contador-visitas'), num = document.getElementById('contador-num');
-    if (!caja || !num || !window.fetch) return;
-    var ESPACIO = 'ruta-cafeina-merida', NOMBRE = 'visitas-sitio';
+    if (!caja || !num) return;
+    var BASE = 'https://abacus.jasoncameron.dev/', ESPACIO = 'jpechsulub-design.github.io', LLAVE = 'ruta-cafeina-merida-visitas';
     var contada = false;
-    try { contada = sessionStorage.getItem('rc_visita_contada') === '1'; } catch (e) { contada = false; }
+    try { contada = sessionStorage.getItem('rc_visita_contada_v2') === '1'; } catch (e) { contada = false; }
+    var url = BASE + (contada ? 'get/' : 'hit/') + ESPACIO + '/' + LLAVE;
+    var terminado = false;
+    function mostrar(j) {
+      if (terminado) return;
+      var n = Number(j && j.value);
+      if (!isFinite(n)) return fallo();
+      terminado = true;
+      num.textContent = n.toLocaleString('es-MX');
+      caja.hidden = false;
+      try { sessionStorage.setItem('rc_visita_contada_v2', '1'); } catch (e) { /* sin almacenamiento */ }
+    }
+    function fallo() { if (!terminado) caja.hidden = true; }
+    /* Plan B si el navegador bloquea la petición normal: el mismo servicio responde por JSONP. */
+    function jsonp() {
+      var nombre = 'rcVisitas' + Date.now(), sc = document.createElement('script');
+      window[nombre] = function (j) { mostrar(j); limpiar(); };
+      function limpiar() { try { delete window[nombre]; } catch (e) { window[nombre] = undefined; } if (sc.parentNode) sc.parentNode.removeChild(sc); }
+      sc.onerror = function () { limpiar(); fallo(); };
+      sc.src = url + '?callback=' + nombre;
+      document.head.appendChild(sc);
+      setTimeout(function () { if (!terminado) { limpiar(); fallo(); } }, 7000);
+    }
+    if (!window.fetch) { jsonp(); return; }
     var ctl = window.AbortController ? new AbortController() : null;
     var corte = setTimeout(function () { if (ctl) ctl.abort(); }, 6000);
-    fetch('https://api.counterapi.dev/v1/' + ESPACIO + '/' + NOMBRE + (contada ? '' : '/up'), { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
-      .then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); })
-      .then(function (j) {
-        clearTimeout(corte);
-        var n = Number(j && (j.count != null ? j.count : j.value));
-        if (!isFinite(n)) throw new Error('dato');
-        num.textContent = n.toLocaleString('es-MX');
-        caja.hidden = false;
-        try { sessionStorage.setItem('rc_visita_contada', '1'); } catch (e) { /* sin almacenamiento */ }
+    fetch(url, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+      .then(function (r) {
+        if (r.status === 404 && contada) { /* el contador aún no existe: se crea con una visita */ return fetch(BASE + 'hit/' + ESPACIO + '/' + LLAVE, { cache: 'no-store' }).then(function (r2) { return r2.json(); }); }
+        if (!r.ok) throw new Error('http');
+        return r.json();
       })
-      .catch(function () { clearTimeout(corte); caja.hidden = true; });
+      .then(function (j) { clearTimeout(corte); mostrar(j); })
+      .catch(function () { clearTimeout(corte); jsonp(); });
   })();
 
   var anio = document.getElementById('anio');
